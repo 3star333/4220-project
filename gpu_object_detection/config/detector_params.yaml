@@ -1,0 +1,34 @@
+# detector_params.yaml
+#
+# Default parameter values for the detector_node.
+# Load with:
+#   ros2 run gpu_object_detection detector_node \
+#       --ros-args --params-file config/detector_params.yaml
+#
+# Or via the launch file (values here are overridden by launch args).
+
+detector_node:
+  ros__parameters:
+
+    # ── Topics ──────────────────────────────────────────────────────────────
+    input_topic:  "/camera/image_raw"
+    output_topic: "/detector/image_annotated"
+
+    # ── Model paths ─────────────────────────────────────────────────────────
+    # Leave empty ("") to use the Canny edge-detection fallback.
+    # For YOLO, download YOLOv4 files and set these paths:
+    #   model_cfg:     "/path/to/yolov4.cfg"
+    #   model_weights: "/path/to/yolov4.weights"
+    #   class_names:   "/path/to/coco.names"
+    model_cfg:     ""
+    model_weights: ""
+    class_names:   ""
+
+    # ── DNN settings ────────────────────────────────────────────────────────
+    input_width:  416
+    input_height: 416
+    conf_thresh:  0.5
+    nms_thresh:   0.4
+
+    # ── Diagnostics ─────────────────────────────────────────────────────────
+    fps_window: 30   # rolling window size for FPS calculation
