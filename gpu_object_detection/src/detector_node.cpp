@@ -18,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <chrono>
+#include <numeric>
 
 namespace gpu_od
 {
@@ -47,15 +48,17 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions & options)
 
   RCLCPP_INFO(get_logger(), "Pipeline backend: %s", pipeline_->name().c_str());
 
-  // ── image_transport setup ─────────────────────────────────────────────────
-  auto it = image_transport::create_image_transport(
+  // ── image_transport setup (ROS2 Humble API) ───────────────────────────────
+  // image_transport::create_image_transport() does not exist in Humble.
+  // Construct ImageTransport directly, passing a shared_ptr to this node.
+  it_ = std::make_shared<image_transport::ImageTransport>(
     std::shared_ptr<rclcpp::Node>(this, [](rclcpp::Node *) {}));
 
-  image_sub_ = it.subscribe(
+  image_sub_ = it_->subscribe(
     p_input_topic_, 1,
     std::bind(&DetectorNode::image_callback, this, std::placeholders::_1));
 
-  image_pub_ = it.advertise(p_output_topic_, 1);
+  image_pub_ = it_->advertise(p_output_topic_, 1);
 
   RCLCPP_INFO(get_logger(),
               "DetectorNode ready\n  input  : %s\n  output : %s",
@@ -121,7 +124,7 @@ void DetectorNode::image_callback(
     return;
   }
 
-  // ── 2. Run pipeline (preprocess → infer → postprocess) ────────────────────
+  // ── 2. Run pipeline (preprocess → infer → postprocess) ───────────────────
   PipelineTiming timing;
   const auto detections = pipeline_->run(frame, timing);
 
@@ -129,7 +132,7 @@ void DetectorNode::image_callback(
   update_fps(timing.total_ms);
   ++frame_count_;
 
-  // ── 4. Log every fps_window_ frames ───────────────────────────────────────
+  // ── 4. Log every fps_window_ frames ──────────────────────────────────────
   if (frame_count_ % static_cast<uint64_t>(p_fps_window_) == 0) {
     RCLCPP_INFO(get_logger(),
                 "[Frame %lu] detections=%zu | pre=%.1fms inf=%.1fms "

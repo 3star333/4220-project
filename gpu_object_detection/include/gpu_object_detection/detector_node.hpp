@@ -47,10 +47,12 @@ private:
   std::unique_ptr<IPipeline> pipeline_;
 
   // ── Image transport ─────────────────────────────────────────────────────────
+  // ImageTransport must be kept alive for the lifetime of sub/pub.
+  std::shared_ptr<image_transport::ImageTransport> it_;
   image_transport::Subscriber image_sub_;
   image_transport::Publisher  image_pub_;
 
-  // ── Params (loaded from ROS2 parameter server) ───────────────────────────────
+  // ── Params (loaded from ROS2 parameter server) ──────────────────────────────
   std::string p_input_topic_;
   std::string p_output_topic_;
   std::string p_model_cfg_;
@@ -60,10 +62,10 @@ private:
   int         p_input_h_{416};
   double      p_conf_thresh_{0.5};
   double      p_nms_thresh_{0.4};
-  int         p_fps_window_{30};   // rolling FPS window size
+  int         p_fps_window_{30};
 
-  // ── Diagnostics ──────────────────────────────────────────────────────────────
-  std::deque<double> frame_times_ms_;   // ring buffer for FPS calculation
+  // ── Diagnostics ─────────────────────────────────────────────────────────────
+  std::deque<double> frame_times_ms_;
   uint64_t           frame_count_{0};
 };
 
