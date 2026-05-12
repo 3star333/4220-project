@@ -9,9 +9,11 @@
 gpu_object_detection/
 ├── include/gpu_object_detection/
 │   ├── detection_pipeline.hpp   # IPipeline interface + CpuPipeline declaration
+│   ├── detection_pipeline_cuda.hpp  # CUDA pipeline declaration
 │   └── detector_node.hpp        # ROS2 node declaration
 ├── src/
 │   ├── detection_pipeline.cpp   # All image processing logic (CPU)
+│   ├── detection_pipeline_cuda.cu  # CUDA backend (optional build)
 │   ├── detector_node.cpp        # ROS2 subscriber / publisher
 │   └── main.cpp                 # Entry point
 ├── launch/
@@ -43,6 +45,15 @@ sudo apt install \
   libopencv-dev
 ```
 
+### CUDA backend prerequisites (optional)
+
+- NVIDIA driver + CUDA toolkit (with `nvcc` available to CMake).
+- OpenCV build that includes:
+  - DNN with CUDA support (`DNN_BACKEND_CUDA` / `DNN_TARGET_CUDA`)
+  - CUDA image modules (`cudaimgproc`, `cudawarping`)
+
+If these are not available, the package still builds and runs with CPU only.
+
 ---
 
 ## Build
@@ -62,6 +73,9 @@ colcon build --packages-select gpu_object_detection --cmake-args -DCMAKE_BUILD_T
 # 4. Source the workspace
 source install/setup.bash
 ```
+
+During configure, CMake prints whether the CUDA pipeline is built. If CUDA/OpenCV CUDA
+components are missing, only `CpuPipeline` is compiled.
 
 ---
 
@@ -93,6 +107,21 @@ ros2 launch gpu_object_detection detector.launch.py \
     class_names:=$(pwd)/coco.names \
     conf_thresh:=0.4
 ```
+
+### Mode C – YOLO with CUDA backend
+
+```bash
+ros2 launch gpu_object_detection detector.launch.py \
+    model_cfg:=$(pwd)/yolov4.cfg \
+    model_weights:=$(pwd)/yolov4.weights \
+    class_names:=$(pwd)/coco.names \
+    use_cuda:=true
+```
+
+Backend selection is runtime-configurable via parameter:
+
+- `use_cuda:=false` (default) → CPU pipeline
+- `use_cuda:=true` → CUDA pipeline if built/available, otherwise logs a warning and falls back to CPU
 
 ### With a webcam (v4l2)
 
@@ -146,61 +175,15 @@ ros2 topic hz /detector/image_annotated
 
 ---
 
-## CUDA Extension Roadmap
+## CUDA backend notes
 
-The CPU pipeline is deliberately isolated behind the `IPipeline` interface.
-To add CUDA acceleration:
-
-### Step 1 – Create `CudaPipeline`
-
-```
-src/detection_pipeline_cuda.cu
-include/gpu_object_detection/detection_pipeline_cuda.hpp
-```
-
-Implement `IPipeline`:
-
-```cpp
-class CudaPipeline : public gpu_od::IPipeline {
-  // preprocess:  cv::cuda::GpuMat upload + resize
-  // infer_yolo:  net_.setPreferableBackend(DNN_BACKEND_CUDA)
-  //              net_.setPreferableTarget(DNN_TARGET_CUDA)
-  // postprocess: cv::cuda drawing or download + CPU draw
-};
-```
-
-### Step 2 – Swap the backend in `detector_node.cpp`
-
-Change **one line**:
-
-```cpp
-// Before (CPU)
-pipeline_ = std::make_unique<CpuPipeline>(...);
-
-// After (CUDA)
-pipeline_ = std::make_unique<CudaPipeline>(...);
-```
-
-### Step 3 – Update `CMakeLists.txt`
-
-```cmake
-find_package(CUDA REQUIRED)
-add_library(detection_pipeline_cuda STATIC
-  src/detection_pipeline_cuda.cu
-)
-target_link_libraries(detection_pipeline_cuda
-  PUBLIC ${OpenCV_LIBS} ${CUDA_LIBRARIES}
-)
-```
-
-### Step 4 – Enable the CUDA DNN backend
-
-```cmake
-# OpenCV must be built with CUDA support:
-find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn cudaimgproc cudawarping)
-```
-
-No other changes needed in the node, launch files, or parameters.
+- `CudaPipeline::preprocess()` uploads each frame once to `cv::cuda::GpuMat`,
+  does resize + BGR→RGB on GPU, then downloads once to create the final DNN blob.
+- The final blob creation currently uses CPU `cv::dnn::blobFromImage` as a clean
+  cross-version fallback because a consistent on-device blob API is not guaranteed.
+- YOLO inference is configured with `DNN_BACKEND_CUDA` and `DNN_TARGET_CUDA`.
+- If CUDA DNN support is missing at runtime, the node logs a clear warning and
+  falls back to `CpuPipeline`.
 
 ---
 

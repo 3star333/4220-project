@@ -32,3 +32,8 @@ detector_node:
 
     # ── Diagnostics ─────────────────────────────────────────────────────────
     fps_window: 30   # rolling window size for FPS calculation
+
+    # ── Backend selection ────────────────────────────────────────────────────
+    # true: use CUDA pipeline when compiled and available (falls back to CPU)
+    # false: always use CPU pipeline
+    use_cuda: false

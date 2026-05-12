@@ -18,6 +18,8 @@ find_package(sensor_msgs       REQUIRED)
 find_package(image_transport   REQUIRED)
 find_package(cv_bridge         REQUIRED)
 find_package(OpenCV            REQUIRED COMPONENTS core imgproc dnn highgui)
+find_package(CUDAToolkit       QUIET)
+include(CheckLanguage)
 
 # ── Pipeline library (decoupled from ROS2) ────────────────────────────────────
 # Building as a static lib keeps the CUDA swap-in clean:
@@ -40,6 +42,51 @@ ament_target_dependencies(detection_pipeline
   rclcpp      # Only needed if pipeline later uses rclcpp::Logger
 )
 
+set(GPU_OD_BUILD_CUDA_PIPELINE OFF)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+  enable_language(CUDA)
+endif()
+
+if(CMAKE_CUDA_COMPILER)
+  find_library(OPENCV_CUDAIMGPROC_LIB NAMES opencv_cudaimgproc)
+  find_library(OPENCV_CUDAWARPING_LIB NAMES opencv_cudawarping)
+
+  if(OPENCV_CUDAIMGPROC_LIB AND OPENCV_CUDAWARPING_LIB)
+    add_library(detection_pipeline_cuda STATIC
+      src/detection_pipeline_cuda.cu
+    )
+
+    set_target_properties(detection_pipeline_cuda PROPERTIES
+      CUDA_STANDARD 17
+      CUDA_STANDARD_REQUIRED ON
+    )
+
+    target_include_directories(detection_pipeline_cuda
+      PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+
+    target_link_libraries(detection_pipeline_cuda
+      ${OpenCV_LIBS}
+      ${OPENCV_CUDAIMGPROC_LIB}
+      ${OPENCV_CUDAWARPING_LIB}
+    )
+
+    if(CUDAToolkit_FOUND)
+      target_link_libraries(detection_pipeline_cuda CUDA::cudart)
+    endif()
+
+    set(GPU_OD_BUILD_CUDA_PIPELINE ON)
+    message(STATUS "Building CUDA pipeline backend")
+  else()
+    message(STATUS "OpenCV CUDA modules not found (cudaimgproc/cudawarping); CUDA pipeline disabled")
+  endif()
+else()
+  message(STATUS "CUDA compiler not available; CUDA pipeline disabled")
+endif()
+
 # ── ROS2 node executable ──────────────────────────────────────────────────────
 add_executable(detector_node
   src/main.cpp
@@ -52,6 +99,10 @@ target_include_directories(detector_node
 )
 
 target_link_libraries(detector_node detection_pipeline)
+if(GPU_OD_BUILD_CUDA_PIPELINE)
+  target_link_libraries(detector_node detection_pipeline_cuda)
+  target_compile_definitions(detector_node PRIVATE GPU_OD_HAS_CUDA_PIPELINE=1)
+endif()
 
 ament_target_dependencies(detector_node
   rclcpp
@@ -66,6 +117,12 @@ install(TARGETS
   detector_node
   DESTINATION lib/${PROJECT_NAME}
 )
+
+if(GPU_OD_BUILD_CUDA_PIPELINE)
+  install(TARGETS detection_pipeline_cuda
+    DESTINATION lib/${PROJECT_NAME}
+  )
+endif()
 
 install(DIRECTORY include/
   DESTINATION include

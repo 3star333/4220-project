@@ -63,6 +63,7 @@ private:
   double      p_conf_thresh_{0.5};
   double      p_nms_thresh_{0.4};
   int         p_fps_window_{30};
+  bool        p_use_cuda_{false};
 
   // ── Diagnostics ─────────────────────────────────────────────────────────────
   std::deque<double> frame_times_ms_;
