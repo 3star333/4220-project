@@ -60,6 +60,10 @@ def generate_launch_description():
         DeclareLaunchArgument("fps_window",
             default_value="30",
             description="Number of frames to average for FPS calculation"),
+
+        DeclareLaunchArgument("use_cuda",
+            default_value="false",
+            description="Enable CUDA backend when available"),
     ]
 
     # ── Node ───────────────────────────────────────────────────────────────
@@ -79,6 +83,7 @@ def generate_launch_description():
             "input_width":   LaunchConfiguration("input_width"),
             "input_height":  LaunchConfiguration("input_height"),
             "fps_window":    LaunchConfiguration("fps_window"),
+            "use_cuda":      LaunchConfiguration("use_cuda"),
         }],
         # Remappings allow zero-config use with any camera driver
         remappings=[

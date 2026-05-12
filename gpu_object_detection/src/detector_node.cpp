@@ -13,11 +13,15 @@
  */
 
 #include "gpu_object_detection/detector_node.hpp"
+#ifdef GPU_OD_HAS_CUDA_PIPELINE
+#include "gpu_object_detection/detection_pipeline_cuda.hpp"
+#endif
 
 #include <cv_bridge/cv_bridge.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include <chrono>
+#include <exception>
 #include <numeric>
 
 namespace gpu_od
@@ -33,18 +37,39 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions & options)
   declare_and_load_params();
 
   // ── Build pipeline backend ────────────────────────────────────────────────
-  //    CUDA extension: replace this line with:
-  //      pipeline_ = std::make_unique<CudaPipeline>(...);
-  //    Everything below this point stays untouched.
-  pipeline_ = std::make_unique<CpuPipeline>(
-    p_model_cfg_,
-    p_model_weights_,
-    p_class_names_,
-    p_input_w_,
-    p_input_h_,
-    static_cast<float>(p_conf_thresh_),
-    static_cast<float>(p_nms_thresh_)
-  );
+  if (p_use_cuda_) {
+#ifdef GPU_OD_HAS_CUDA_PIPELINE
+    try {
+      pipeline_ = std::make_unique<CudaPipeline>(
+        p_model_cfg_,
+        p_model_weights_,
+        p_class_names_,
+        p_input_w_,
+        p_input_h_,
+        static_cast<float>(p_conf_thresh_),
+        static_cast<float>(p_nms_thresh_));
+    } catch (const std::exception & e) {
+      RCLCPP_WARN(get_logger(),
+                  "CUDA pipeline init failed (%s). Falling back to CPU pipeline.",
+                  e.what());
+    }
+#else
+    RCLCPP_WARN(get_logger(),
+                "use_cuda=true requested, but CUDA pipeline was not built. "
+                "Falling back to CPU pipeline.");
+#endif
+  }
+
+  if (!pipeline_) {
+    pipeline_ = std::make_unique<CpuPipeline>(
+      p_model_cfg_,
+      p_model_weights_,
+      p_class_names_,
+      p_input_w_,
+      p_input_h_,
+      static_cast<float>(p_conf_thresh_),
+      static_cast<float>(p_nms_thresh_));
+  }
 
   RCLCPP_INFO(get_logger(), "Pipeline backend: %s", pipeline_->name().c_str());
 
@@ -88,6 +113,7 @@ void DetectorNode::declare_and_load_params()
 
   // Diagnostics
   declare_parameter("fps_window",    30);
+  declare_parameter("use_cuda",      false);
 
   // Load
   p_input_topic_   = get_parameter("input_topic").as_string();
@@ -100,6 +126,7 @@ void DetectorNode::declare_and_load_params()
   p_conf_thresh_   = get_parameter("conf_thresh").as_double();
   p_nms_thresh_    = get_parameter("nms_thresh").as_double();
   p_fps_window_    = get_parameter("fps_window").as_int();
+  p_use_cuda_      = get_parameter("use_cuda").as_bool();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
