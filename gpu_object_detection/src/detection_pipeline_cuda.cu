@@ -1,6 +1,7 @@
 #include "gpu_object_detection/detection_pipeline_cuda.hpp"
 
 #include <opencv2/core/cuda.hpp>
+#include <opencv2/cudafilters.hpp>
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
 
@@ -76,6 +77,7 @@ std::vector<Detection> CudaPipeline::run(cv::Mat & frame,
   timing.inference_ms =
     std::chrono::duration<double, std::milli>(Clock::now() - t1).count();
 
+  // Keep timing shape identical to CpuPipeline: postprocess gets pre+infer total.
   timing.total_ms =
     std::chrono::duration<double, std::milli>(Clock::now() - t_total_start).count();
 
@@ -188,10 +190,23 @@ std::vector<Detection> CudaPipeline::infer_yolo(const cv::Mat & blob,
 
 std::vector<Detection> CudaPipeline::infer_canny(const cv::Mat & frame)
 {
-  cv::Mat gray, blurred, edges;
-  cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-  cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 1.4);
-  cv::Canny(blurred, edges, 50, 150);
+  cv::cuda::GpuMat gpu_bgr;
+  gpu_bgr.upload(frame);
+
+  cv::cuda::GpuMat gpu_gray;
+  cv::cuda::cvtColor(gpu_bgr, gpu_gray, cv::COLOR_BGR2GRAY);
+
+  cv::cuda::GpuMat gpu_blurred;
+  auto gauss_filter = cv::cuda::createGaussianFilter(
+    gpu_gray.type(), gpu_gray.type(), cv::Size(5, 5), 1.4);
+  gauss_filter->apply(gpu_gray, gpu_blurred);
+
+  cv::cuda::GpuMat gpu_edges;
+  auto canny_detector = cv::cuda::createCannyEdgeDetector(50.0, 150.0);
+  canny_detector->detect(gpu_blurred, gpu_edges);
+
+  cv::Mat edges;
+  gpu_edges.download(edges);
 
   std::vector<std::vector<cv::Point>> contours;
   cv::findContours(edges, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);

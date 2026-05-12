@@ -50,7 +50,7 @@ sudo apt install \
 - NVIDIA driver + CUDA toolkit (with `nvcc` available to CMake).
 - OpenCV build that includes:
   - DNN with CUDA support (`DNN_BACKEND_CUDA` / `DNN_TARGET_CUDA`)
-  - CUDA image modules (`cudaimgproc`, `cudawarping`)
+  - CUDA image modules (`cudafilters`, `cudaimgproc`, `cudawarping`)
 
 If these are not available, the package still builds and runs with CPU only.
 

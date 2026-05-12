@@ -49,10 +49,11 @@ if(CMAKE_CUDA_COMPILER)
 endif()
 
 if(CMAKE_CUDA_COMPILER)
+  find_library(OPENCV_CUDAFILTERS_LIB NAMES opencv_cudafilters)
   find_library(OPENCV_CUDAIMGPROC_LIB NAMES opencv_cudaimgproc)
   find_library(OPENCV_CUDAWARPING_LIB NAMES opencv_cudawarping)
 
-  if(OPENCV_CUDAIMGPROC_LIB AND OPENCV_CUDAWARPING_LIB)
+  if(OPENCV_CUDAFILTERS_LIB AND OPENCV_CUDAIMGPROC_LIB AND OPENCV_CUDAWARPING_LIB)
     add_library(detection_pipeline_cuda STATIC
       src/detection_pipeline_cuda.cu
     )
@@ -70,6 +71,7 @@ if(CMAKE_CUDA_COMPILER)
 
     target_link_libraries(detection_pipeline_cuda
       ${OpenCV_LIBS}
+      ${OPENCV_CUDAFILTERS_LIB}
       ${OPENCV_CUDAIMGPROC_LIB}
       ${OPENCV_CUDAWARPING_LIB}
     )
@@ -81,7 +83,7 @@ if(CMAKE_CUDA_COMPILER)
     set(GPU_OD_BUILD_CUDA_PIPELINE ON)
     message(STATUS "Building CUDA pipeline backend")
   else()
-    message(STATUS "OpenCV CUDA modules not found (cudaimgproc/cudawarping); CUDA pipeline disabled")
+    message(STATUS "OpenCV CUDA modules not found (cudafilters/cudaimgproc/cudawarping); CUDA pipeline disabled")
   endif()
 else()
   message(STATUS "CUDA compiler not available; CUDA pipeline disabled")
