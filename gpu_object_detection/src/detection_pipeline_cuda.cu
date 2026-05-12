@@ -149,13 +149,14 @@ std::vector<Detection> CudaPipeline::infer_yolo(const cv::Mat & blob,
   for (const auto & out : outs) {
     const auto * data = reinterpret_cast<const float *>(out.data);
     for (int i = 0; i < out.rows; ++i, data += out.cols) {
-      const cv::Mat scores(1, out.cols - 5, CV_32F,
-                           const_cast<float *>(data + 5));
-      cv::Point class_id_pt;
-      double max_val{0.0};
-      cv::minMaxLoc(scores, nullptr, &max_val, nullptr, &class_id_pt);
-
-      const float confidence = static_cast<float>(max_val);
+      int class_id = 0;
+      float confidence = 0.0f;
+      for (int c = 5; c < out.cols; ++c) {
+        if (data[c] > confidence) {
+          confidence = data[c];
+          class_id = c - 5;
+        }
+      }
       if (confidence < conf_thresh_) { continue; }
 
       const int cx = static_cast<int>(data[0] * frame_w);
@@ -165,7 +166,7 @@ std::vector<Detection> CudaPipeline::infer_yolo(const cv::Mat & blob,
 
       boxes.push_back({cx - bw / 2, cy - bh / 2, bw, bh});
       confidences.push_back(confidence);
-      class_ids.push_back(class_id_pt.x);
+      class_ids.push_back(class_id);
     }
   }
 

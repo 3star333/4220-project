@@ -120,8 +120,8 @@ ros2 launch gpu_object_detection detector.launch.py \
 
 Backend selection is runtime-configurable via parameter:
 
-- `use_cuda:=false` (default) → CPU pipeline
-- `use_cuda:=true` → CUDA pipeline if built/available, otherwise logs a warning and falls back to CPU
+- `use_cuda:=false` (default) -> CPU pipeline
+- `use_cuda:=true` -> CUDA pipeline if built/available, otherwise logs a warning and falls back to CPU
 
 ### With a webcam (v4l2)
 
