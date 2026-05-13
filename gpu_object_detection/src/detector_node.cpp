@@ -141,12 +141,40 @@ void DetectorNode::image_callback(
   const sensor_msgs::msg::Image::ConstSharedPtr & msg)
 {
   // ── 1. Convert ROS2 Image → OpenCV Mat ───────────────────────────────────
+  // Handles any encoding the camera may publish (YUYV, RGB8, BGR8, mono8, etc.)
+  // by attempting a direct BGR8 conversion first, then falling back through
+  // common formats. This covers cameras like the EMEET C60E that publish YUYV.
   cv_bridge::CvImagePtr cv_ptr;
   try {
+    // Best case: already BGR8 or directly convertible (MJPG, RGB8, etc.)
     cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-  } catch (const cv_bridge::Exception & e) {
-    RCLCPP_ERROR(get_logger(), "cv_bridge exception: %s", e.what());
-    return;
+  } catch (const cv_bridge::Exception &) {
+    try {
+      // YUYV / YUV422 cameras: convert via YUV first
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::YUV422);
+      cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_YUV2BGR_YUYV);
+    } catch (const cv_bridge::Exception &) {
+      try {
+        // RGB8 fallback (some USB cameras)
+        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
+        cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_RGB2BGR);
+      } catch (const cv_bridge::Exception &) {
+        try {
+          // Last resort: pass-through with no conversion and let OpenCV handle it
+          cv_ptr = cv_bridge::toCvCopy(msg);
+          if (cv_ptr->image.channels() == 1) {
+            cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_GRAY2BGR);
+          } else if (cv_ptr->image.channels() == 4) {
+            cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_BGRA2BGR);
+          }
+        } catch (const cv_bridge::Exception & e) {
+          RCLCPP_ERROR(get_logger(),
+                       "[%s] Unsupported image encoding '%s': %s",
+                       get_name(), msg->encoding.c_str(), e.what());
+          return;
+        }
+      }
+    }
   }
 
   cv::Mat & frame = cv_ptr->image;
