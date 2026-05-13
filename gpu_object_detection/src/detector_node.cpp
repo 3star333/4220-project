@@ -140,42 +140,66 @@ void DetectorNode::declare_and_load_params()
 void DetectorNode::image_callback(
   const sensor_msgs::msg::Image::ConstSharedPtr & msg)
 {
-  // ── 1. Convert ROS2 Image → OpenCV Mat ───────────────────────────────────
-  // Handles any encoding the camera may publish (YUYV, RGB8, BGR8, mono8, etc.)
-  // by attempting a direct BGR8 conversion first, then falling back through
-  // common formats. This covers cameras like the EMEET C60E that publish YUYV.
+  // ── 1. Convert ROS2 Image → OpenCV BGR8 Mat ──────────────────────────────
+  // Checks the actual encoding string from the message and applies the correct
+  // OpenCV conversion. This is more reliable than the nested try/catch approach
+  // because cv_bridge's YUV422 encoding is UYVY-ordered internally, which
+  // caused the green tint seen on EMEET C60E and other YUYV cameras.
   cv_bridge::CvImagePtr cv_ptr;
-  try {
-    // Best case: already BGR8 or directly convertible (MJPG, RGB8, etc.)
-    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-  } catch (const cv_bridge::Exception &) {
-    try {
-      // YUYV / YUV422 cameras: convert via YUV first
-      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::YUV422);
-      cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_YUV2BGR_YUYV);
-    } catch (const cv_bridge::Exception &) {
-      try {
-        // RGB8 fallback (some USB cameras)
-        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
-        cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_RGB2BGR);
-      } catch (const cv_bridge::Exception &) {
-        try {
-          // Last resort: pass-through with no conversion and let OpenCV handle it
-          cv_ptr = cv_bridge::toCvCopy(msg);
-          if (cv_ptr->image.channels() == 1) {
-            cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_GRAY2BGR);
-          } else if (cv_ptr->image.channels() == 4) {
-            cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_BGRA2BGR);
-          }
-        } catch (const cv_bridge::Exception & e) {
-          RCLCPP_ERROR(get_logger(),
-                       "[%s] Unsupported image encoding '%s': %s",
-                       get_name(), msg->encoding.c_str(), e.what());
-          return;
-        }
-      }
-    }
+  cv::Mat bgr_frame;
+
+  // Log encoding on first frame only so we know what the camera is sending
+  if (frame_count_ == 0) {
+    RCLCPP_INFO(get_logger(), "[%s] Camera encoding: '%s'",
+                get_name(), msg->encoding.c_str());
   }
+
+  try {
+    const std::string & enc = msg->encoding;
+
+    if (enc == sensor_msgs::image_encodings::BGR8 ||
+        enc == sensor_msgs::image_encodings::BGRA8) {
+      // Already BGR — direct copy (MJPG decoded by v4l2_camera arrives as BGR8)
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+      bgr_frame = cv_ptr->image;
+
+    } else if (enc == sensor_msgs::image_encodings::RGB8 ||
+               enc == sensor_msgs::image_encodings::RGBA8) {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::RGB8);
+      cv::cvtColor(cv_ptr->image, bgr_frame, cv::COLOR_RGB2BGR);
+
+    } else if (enc == "yuv422" || enc == "yuv422_yuy2" || enc == "yuyv422") {
+      // v4l2_camera YUYV: raw byte order is  Y0 U0 Y1 V0  (YUYV packed).
+      // Pass-through with no desired encoding so cv_bridge doesn't reorder bytes,
+      // then use COLOR_YUV2BGR_YUYV which matches the actual YUYV byte layout.
+      cv_ptr = cv_bridge::toCvCopy(msg);
+      cv::cvtColor(cv_ptr->image, bgr_frame, cv::COLOR_YUV2BGR_YUYV);
+
+    } else if (enc == "uyvy" || enc == "yuv422_uyvy") {
+      cv_ptr = cv_bridge::toCvCopy(msg);
+      cv::cvtColor(cv_ptr->image, bgr_frame, cv::COLOR_YUV2BGR_UYVY);
+
+    } else if (enc == sensor_msgs::image_encodings::MONO8) {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::MONO8);
+      cv::cvtColor(cv_ptr->image, bgr_frame, cv::COLOR_GRAY2BGR);
+
+    } else {
+      // Unknown encoding: let cv_bridge try a direct BGR8 conversion.
+      // If this throws, we log clearly and skip the frame.
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+      bgr_frame = cv_ptr->image;
+    }
+
+  } catch (const cv_bridge::Exception & e) {
+    RCLCPP_ERROR(get_logger(),
+                 "[%s] Cannot convert encoding '%s' to BGR8: %s  "
+                 "— Try relaunching v4l2_camera with -p pixel_format:=MJPG",
+                 get_name(), msg->encoding.c_str(), e.what());
+    return;
+  }
+
+  // Wrap bgr_frame back into cv_ptr so the rest of the callback is unchanged
+  cv_ptr->image = bgr_frame;
 
   cv::Mat & frame = cv_ptr->image;
   if (frame.empty()) {
