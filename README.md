@@ -8,9 +8,22 @@ This repository contains a ROS 2 package for CPU and optional CUDA-backed object
 ## Quick Start
 
 ```bash
-cd gpu_object_detection
+mkdir -p ~/ros2_ws/src
+cp -r gpu_object_detection ~/ros2_ws/src/
+
+cd ~/ros2_ws
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --packages-select gpu_object_detection \
+             --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
 ```
 
-Then follow the build and run instructions in the package README:
+Then run:
+
+```bash
+ros2 launch gpu_object_detection detector.launch.py
+```
+
+For full setup, CUDA options, and comparison demo details, see:
 
 [`gpu_object_detection/README.md`](./gpu_object_detection/README.md)
