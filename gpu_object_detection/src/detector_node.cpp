@@ -71,7 +71,8 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions & options)
       static_cast<float>(p_nms_thresh_));
   }
 
-  RCLCPP_INFO(get_logger(), "Pipeline backend: %s", pipeline_->name().c_str());
+  RCLCPP_INFO(get_logger(), "[%s] Pipeline backend: %s",
+              get_name(), pipeline_->name().c_str());
 
   // ── image_transport setup (ROS2 Humble API) ───────────────────────────────
   // image_transport::create_image_transport() does not exist in Humble.
@@ -86,8 +87,11 @@ DetectorNode::DetectorNode(const rclcpp::NodeOptions & options)
   image_pub_ = it_->advertise(p_output_topic_, 1);
 
   RCLCPP_INFO(get_logger(),
-              "DetectorNode ready\n  input  : %s\n  output : %s",
-              p_input_topic_.c_str(), p_output_topic_.c_str());
+              "[%s] Ready  backend=%s  input=%s  output=%s",
+              get_name(),
+              pipeline_->name().c_str(),
+              p_input_topic_.c_str(),
+              p_output_topic_.c_str());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,8 +166,9 @@ void DetectorNode::image_callback(
   // ── 4. Log every fps_window_ frames ──────────────────────────────────────
   if (frame_count_ % static_cast<uint64_t>(p_fps_window_) == 0) {
     RCLCPP_INFO(get_logger(),
-                "[Frame %lu] detections=%zu | pre=%.1fms inf=%.1fms "
+                "[%s][Frame %lu] detections=%zu | pre=%.1fms inf=%.1fms "
                 "post=%.1fms total=%.1fms | rolling_fps=%.1f",
+                get_name(),
                 frame_count_,
                 detections.size(),
                 timing.preprocess_ms,
