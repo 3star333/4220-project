@@ -8,12 +8,10 @@ This repository contains a ROS 2 package for CPU and optional CUDA-backed object
 ## Quick Start
 
 ```bash
-mkdir -p ~/ros2_ws/src
-cp -r gpu_object_detection ~/ros2_ws/src/
-
-cd ~/ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
+# From the repository root (4220-project/)
+rosdep install --from-paths gpu_object_detection --ignore-src -r -y
 colcon build --packages-select gpu_object_detection \
+             --base-paths . \
              --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
 ```
